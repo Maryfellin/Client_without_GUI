@@ -2,7 +2,6 @@
 #include <WinSock2.h> 
 #include <string> 
 #include <iostream> 
-
 #include <windows.h>
 
 using namespace std;
@@ -11,7 +10,13 @@ SOCKET Connection;
 
 char ServerIP[] = "127.0.0.1";
 int Port = 1509;
-std::string nickname;
+string confirm;
+char message[200];
+string strmessage;
+char address[256];
+short iport;
+
+string nickname;
 
 enum Packet
 {
@@ -70,52 +75,64 @@ int main()
 {
 	//setlocale(LC_ALL, "russian");
 
-	SetConsoleCP(1251); //установка кодовой страницы win-cp 1251 в поток ввода
-	SetConsoleOutputCP(1251); //установка кодовой страницы win-cp 1251 в поток вывода
 
-	WSADATA WSAData;
-	WSAStartup(MAKEWORD(2, 0), &WSAData);
-
-	SOCKADDR_IN addr;
-	int sizeofaddr = sizeof(addr);
-	addr.sin_addr.s_addr = inet_addr(ServerIP);
-	addr.sin_port = htons(Port);
-	addr.sin_family = AF_INET;
+		SetConsoleCP(1251); //установка кодовой страницы win-cp 1251 в поток ввода
+		SetConsoleOutputCP(1251); //установка кодовой страницы win-cp 1251 в поток вывода
 
 
-	std::cout << "Введите имя: ";
-	std::getline(std::cin, nickname);
+		WSADATA WSAData;
+		WSAStartup(MAKEWORD(2, 0), &WSAData);
 
-	std::cout << "Приветствую, " << nickname << "!!! \n";
+		SOCKADDR_IN addr;
+		int sizeofaddr = sizeof(addr);
+		addr.sin_family = AF_INET;
 
-	Connection = socket(AF_INET, SOCK_STREAM, NULL);
-	if (connect(Connection, (SOCKADDR*)&addr, sizeofaddr) != 0)
-	{
-		MessageBoxA(NULL, "Ошибка подключения", "Error", MB_OK | MB_ICONERROR);
+		cout << "Введите IP-адрес: ";
+		cin.getline(address, 256);
+
+		addr.sin_addr.s_addr = inet_addr(address);
+		cout << "Введите порт: ";
+		cin >> iport;
+		addr.sin_port = htons(iport); // server port
+		cout << endl;
+		//addr.sin_port = htons(Port);
+
+
+		cout << "Введите имя: ";
+		cin >> nickname;
+
+		std::cout << "Приветствую, " << nickname << "!!! \n";
+
+		Connection = socket(AF_INET, SOCK_STREAM, NULL);
+		if (connect(Connection, (SOCKADDR*)&addr, sizeofaddr) != 0)
+		{
+			MessageBoxA(NULL, "Ошибка подключения", "Error", MB_OK | MB_ICONERROR);
+			return 0;
+			printf("Клиента нет");
+			return 0;
+
+		}
+		else printf("Подключён к серверу!\n");
+
+		CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)ClientThread, NULL, NULL, NULL);
+
+
+		std::string name;
+		std::string userinput; //содержит сообщение чата пользователя
+
+		while (true)
+		{
+			std::getline(std::cin, userinput); //Получить строку, если пользователь нажимает клавишу enter и заполняет буфер
+			name = nickname + ": " + userinput;
+			int bufferlength = name.size(); //Найти длину буфера
+			Packet chatmessagepacket = Message; //Создать тип пакета: сообщение чата, отправляемое на сервер
+
+			send(Connection, (char*)&chatmessagepacket, sizeof(Packet), NULL); //Отправить тип пакета: сообщение чата
+			send(Connection, (char*)&bufferlength, sizeof(int), NULL); //Отправить длину буфера
+			send(Connection, name.c_str(), bufferlength, NULL); //Отправить буфер 
+			Sleep(10);
+		}
 		return 0;
 
-	}
-	else printf("Подключён к серверу!\n");
-
-
-	CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)ClientThread, NULL, NULL, NULL);
-
-
-	std::string name;
-	std::string userinput; //содержит сообщение чата пользователя
-
-	while (true)
-	{
-		std::getline(std::cin, userinput); //Получить строку, если пользователь нажимает клавишу enter и заполняет буфер
-		name = nickname + ": " + userinput;
-		int bufferlength = name.size(); //Найти длину буфера
-		Packet chatmessagepacket = Message; //Создать тип пакета: сообщение чата, отправляемое на сервер
-
-		send(Connection, (char*)&chatmessagepacket, sizeof(Packet), NULL); //Отправить тип пакета: сообщение чата
-		send(Connection, (char*)&bufferlength, sizeof(int), NULL); //Отправить длину буфера
-		send(Connection, name.c_str(), bufferlength, NULL); //Отправить буфер 
-		Sleep(10);
-	}
-	return 0;
 }
 
