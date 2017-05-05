@@ -11,46 +11,93 @@ SOCKET Connection;
 char ServerIP[] = "127.0.0.1";
 int Port = 1509;
 string confirm;
-char message[200];
 string strmessage;
 char address[256];
 short iport;
-
 string nickname;
 
 enum Packet
 {
-	Message,
-	Test
+	Message
 };
 
 BOOL WINAPI SetConsoleOutputCP(__in UINT wCodePageID); //установка кодовой страницы в поток вывода
 BOOL WINAPI SetConsoleCP(__in UINT wCodePageID); //установка кодовой страницы в поток вывода
 
-
-bool ProcessPacket(Packet packettype)
+bool Send(int _int)
 {
-	switch (packettype)
+	int RetnCheck = send(Connection, (char*)&_int, sizeof(int), NULL);
+	if (RetnCheck == SOCKET_ERROR) 
+		return false;
+	return true;
+}
+
+bool Get(int & _int)
+{
+	int RetnCheck = recv(Connection, (char*)&_int, sizeof(int), NULL); //приём
+	if (RetnCheck == SOCKET_ERROR) //Если есть проблема с подключением
+		return false;
+	return true;
+}
+
+bool SendPacket(Packet _packettype)
+{
+	int RetnCheck = send(Connection, (char*)&_packettype, sizeof(Packet), NULL); //отправить пакет
+	if (RetnCheck == SOCKET_ERROR)
+		return false;
+	return true; 
+}
+
+bool GetPacket(Packet & _packettype)
+{
+	int RetnCheck = recv(Connection, (char*)&_packettype, sizeof(Packet), NULL); //получение пакета
+	if (RetnCheck == SOCKET_ERROR)
+		return false;
+	return true;
+}
+
+bool SendString(std::string & _string)
+{
+	if (!SendPacket(Message))
+		return false; 
+	int bufferlength = _string.size();
+	if (!Send(bufferlength))
+		return false;
+	int RetnCheck = send(Connection, _string.c_str(), bufferlength, NULL);
+	if (RetnCheck == SOCKET_ERROR)
+		return false;
+	return true;
+}
+
+bool GetString(std::string & _string)
+{
+	int bufferlength; //длина сообщения
+	if (!Get(bufferlength)) //получить длину буфера и сохранить его в переменной: bufferlength
+		return false;
+	char * buffer = new char[bufferlength + 1]; //выделение буфера
+	buffer[bufferlength] = '\0'; //устанавливаем последний символ буфера нулевым
+	int RetnCheck = recv(Connection, buffer, bufferlength, NULL); //получаем сообщение и сохраняем в массиве буферов
+	_string = buffer; //установить строку в полученное сообщение буфера
+	delete[] buffer;
+	if (RetnCheck == SOCKET_ERROR) //если соединение потеряно во время получения сообщения
+		return false;
+	return true;
+}
+
+bool ProcessPacket(Packet _packettype)
+{
+	switch (_packettype)
 	{
 	case Message:
 	{
-		int bufferlength; //длина сообщения
-		recv(Connection, (char*)&bufferlength, sizeof(int), NULL); //Буфер приема
-		char * buffer = new char[bufferlength + 1]; //Выделяем буфер
-
-		buffer[bufferlength] = '\0';
-		recv(Connection, buffer, bufferlength, NULL);
-		printf(buffer); //печатаем
-		printf("\n");
-
-		delete[] buffer; //удаляем буфер
+		std::string Message; //Строка для хранения полученного нами сообщения
+		if (!GetString(Message)) //Получить сообщение чата и сохранить его в переменной
+			return false;
+		std::cout << Message << std::endl; //Отображение сообщения пользователю
 		break;
 	}
-	case Test:
-		printf("Тестовое сообщение отправлено!\n");
-		break;
 	default:
-		printf("Неизвестный пакет: ", packettype);
+		std::cout << "Нераспознанный пакет" << _packettype << std::endl;
 		break;
 	}
 	return true;
@@ -58,81 +105,69 @@ bool ProcessPacket(Packet packettype)
 
 void ClientThread()
 {
-	Packet packettype;
+	Packet PacketType;
 	while (true)
 	{
-		//Сначала получаем тип пакета
-		recv(Connection, (char*)&packettype, sizeof(Packet), NULL); //Получение типа пакета с сервера
-		printf("\n");
-
-
-		if (!ProcessPacket(packettype)) //Если пакет неправильно обработан
-			break; //выход из цикла
+		if (!GetPacket(PacketType))
+			break;
+		if (!ProcessPacket(PacketType))
+			break;
 	}
+	std::cout << "Потеряна связь с сервером." << std::endl;
+	closesocket(Connection);
 }
 
 int main()
 {
-	//setlocale(LC_ALL, "russian");
+	SetConsoleCP(1251); //установка кодовой страницы win-cp 1251 в поток ввода
+	SetConsoleOutputCP(1251); //установка кодовой страницы win-cp 1251 в поток вывода
 
+	cout << "--------------------------------------CHAT--------------------------------------\n";
 
-		SetConsoleCP(1251); //установка кодовой страницы win-cp 1251 в поток ввода
-		SetConsoleOutputCP(1251); //установка кодовой страницы win-cp 1251 в поток вывода
+	WSADATA WSAData;
+	WSAStartup(MAKEWORD(2, 0), &WSAData);
 
+	SOCKADDR_IN addr;
+	int sizeofaddr = sizeof(addr);
+	addr.sin_family = AF_INET;
 
-		WSADATA WSAData;
-		WSAStartup(MAKEWORD(2, 0), &WSAData);
+	cout << "Введите IP-адрес: ";
+	cin.getline(address, 256);
+	cout << "--------------------------------------------------------------------------------\n";
 
-		SOCKADDR_IN addr;
-		int sizeofaddr = sizeof(addr);
-		addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = inet_addr(address);
+	cout << "Введите порт: ";
+	cin >> iport;
+	addr.sin_port = htons(iport); // server port
 
-		cout << "Введите IP-адрес: ";
-		cin.getline(address, 256);
+	cout << "--------------------------------------------------------------------------------\n";
 
-		addr.sin_addr.s_addr = inet_addr(address);
-		cout << "Введите порт: ";
-		cin >> iport;
-		addr.sin_port = htons(iport); // server port
-		cout << endl;
-		//addr.sin_port = htons(Port);
+	cout << "Введите имя: ";
+	cin >> nickname;
+	cout << "--------------------------------------------------------------------------------\n";
+	std::cout << "Приветствую, " << nickname << "!!! \n";
+	cout << "--------------------------------------------------------------------------------\n";
 
-
-		cout << "Введите имя: ";
-		cin >> nickname;
-
-		std::cout << "Приветствую, " << nickname << "!!! \n";
-
-		Connection = socket(AF_INET, SOCK_STREAM, NULL);
-		if (connect(Connection, (SOCKADDR*)&addr, sizeofaddr) != 0)
-		{
-			MessageBoxA(NULL, "Ошибка подключения", "Error", MB_OK | MB_ICONERROR);
-			return 0;
-			printf("Клиента нет");
-			return 0;
-
-		}
-		else printf("Подключён к серверу!\n");
-
-		CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)ClientThread, NULL, NULL, NULL);
-
-
-		std::string name;
-		std::string userinput; //содержит сообщение чата пользователя
-
-		while (true)
-		{
-			std::getline(std::cin, userinput); //Получить строку, если пользователь нажимает клавишу enter и заполняет буфер
-			name = nickname + ": " + userinput;
-			int bufferlength = name.size(); //Найти длину буфера
-			Packet chatmessagepacket = Message; //Создать тип пакета: сообщение чата, отправляемое на сервер
-
-			send(Connection, (char*)&chatmessagepacket, sizeof(Packet), NULL); //Отправить тип пакета: сообщение чата
-			send(Connection, (char*)&bufferlength, sizeof(int), NULL); //Отправить длину буфера
-			send(Connection, name.c_str(), bufferlength, NULL); //Отправить буфер 
-			Sleep(10);
-		}
+	Connection = socket(AF_INET, SOCK_STREAM, NULL);
+	if (connect(Connection, (SOCKADDR*)&addr, sizeofaddr) != 0)
+	{
+		MessageBoxA(NULL, "Ошибка подключения", "Error", MB_OK | MB_ICONERROR);
 		return 0;
+	}
+	std::cout << "Подключён к серверу!" << std::endl;
+	CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)ClientThread, NULL, NULL, NULL);
 
+	std::string name;
+	std::string userinput; //содержит сообщение чата пользователя
+
+	while (true)
+	{
+		std::getline(std::cin, userinput);
+		name = nickname + ": " + userinput;
+		userinput = name;
+		if (!SendString(userinput))
+			break;
+		Sleep(10);
+	}
+	return 0;
 }
-
